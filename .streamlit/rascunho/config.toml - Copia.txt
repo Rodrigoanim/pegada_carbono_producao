@@ -1,0 +1,14 @@
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "auto"
+
+[menu]
+aboutSectionMd = """
+### Calculadora Pegada Carbono
+
+Desenvolvido pela Animgrafs
+
+Ferramenta para cálculo de estimativas de emissões de carbono e outros indicadores ambientais.
+"""

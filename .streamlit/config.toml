@@ -1,0 +1,30 @@
+[theme]
+#ABIC
+primaryColor="#074D67"  # Azul petróleo escuro (cor predominante no logotipo)
+backgroundColor="#FFFFFF"  # Branco (para manter a clareza da interface)
+# secondaryBackgroundColor="#F7E0C1"  # Bege claro (para destacar seções secundárias)
+secondaryBackgroundColor="#C1E1C1"  # Verde Suave Acinzentado → #C1E1C1 🍃 (Tom mais sóbrio e elegante)
+textColor="#31333F"  # Cinza escuro para manter boa legibilidade
+font="sans serif"  # Fonte padrão e legível
+
+# primaryColor="#FF4B4B"
+# backgroundColor="#FFFFFF"
+# secondaryBackgroundColor="#F0F2F6"
+# textColor="#31333F"
+# font="sans serif"
+
+[client]
+# Change the visibility of items in the toolbar, options menu,
+# and settings dialog (top right of the app).
+# Allowed values:
+# - "auto"      : Show the developer options if the app is accessed through
+#                 localhost or through Streamlit Community Cloud as a developer.
+#                 Hide them otherwise.
+# - "developer" : Show the developer options.
+# - "viewer"    : Hide the developer options.
+# - "minimal"   : Show only options set externally (e.g. through
+#                 Streamlit Community Cloud) or through st.set_page_config.
+#                 If there are no options left, hide the menu.
+# Default: "auto"
+toolbarMode = "auto"
+#toolbarMode = "minimal"
