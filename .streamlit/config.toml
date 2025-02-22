@@ -26,5 +26,5 @@ font="sans serif"  # Fonte padrão e legível
 #                 Streamlit Community Cloud) or through st.set_page_config.
 #                 If there are no options left, hide the menu.
 # Default: "auto"
-toolbarMode = "auto"
-#toolbarMode = "minimal"
+# toolbarMode = "auto"
+toolbarMode = "minimal"

@@ -1,14 +1,14 @@
 # Arquivo: result_sea.py
-# Data: 15/02/2025 07:00
+# Data: 21/02/2025 19:00
 # Pagina de resultados - Sem a Etapa Agrícola
+# Adaptação para o uso de Discos SSD e a pasta Data para o banco de dados
 
 import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
-
-# Nome do banco de dados
-DB_NAME = "calcpc.db"
+from config import DB_PATH  # Adicione esta importação
+from paginas.form_model_recalc import verificar_dados_usuario, calculate_formula, atualizar_formulas
 
 def format_br_number(value):
     """
@@ -413,13 +413,19 @@ def show_results():
             
         user_id = st.session_state.user_id
         
+        # Conecta ao banco de dados
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Atualiza todas as fórmulas
+        if not atualizar_formulas(cursor, user_id):
+            st.error("Erro ao atualizar fórmulas!")
+            return
+        
         # Adiciona o subtítulo no início da página
         subtitulo()
         
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        
-        # Garante que existam dados para o usuário
+        # Garante que existam dados para o usuário na tabela forms_result_sea
         new_user(cursor, user_id)
         
         # Buscar todos os elementos ordenados por row e col

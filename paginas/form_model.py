@@ -1,15 +1,17 @@
 # Arquivo: form_model.py
-# Data: 15/02/2025 - Hora: 14H42
-# CursorAI - claude 3.5 sonnet - Composer
-# 3x formularios de entrada de dados
+# Data: 21/02/2025 - Hora: 14:30
+# CursorAI - claude 3.5 sonnet 
+# Adaptação para o uso de Discos SSD e a pasta Data para o banco de dados
+# Rotina de coleta de logs de acesso ao sistema
 
 import sqlite3
 import streamlit as st
 import pandas as pd
 import re
 
-# Nome do banco de dados - calc.db
-DB_NAME = "calcpc.db"
+from config import DB_PATH
+from paginas.monitor import registrar_acesso  # Ajustado para incluir o caminho completo
+
 MAX_COLUMNS = 5  # Número máximo de colunas no layout
 
 def date_to_days(date_str):
@@ -273,6 +275,11 @@ def process_forms_tab(section='cafe'):
     """
     conn = None
     try:
+        # Inicializa flag de log no session_state se não existir
+        log_key = f"log_registered_{section}"
+        if log_key not in st.session_state:
+            st.session_state[log_key] = False
+            
         # 1. Verifica se há um usuário logado
         if 'user_id' not in st.session_state:
             st.error("Usuário não está logado!")
@@ -294,7 +301,7 @@ def process_forms_tab(section='cafe'):
             st.session_state.form_values = {}
         
         # Conexão com o banco
-        conn = sqlite3.connect(DB_NAME)
+        conn = sqlite3.connect(DB_PATH)  # Atualizado para usar DB_PATH
         cursor = conn.cursor()
 
         # 3. Garante que existam dados para o usuário
@@ -328,15 +335,52 @@ def process_forms_tab(section='cafe'):
         for row_num in sorted(rows.keys()):
             row_elements = rows[row_num]
             
-            # Verifica se é uma linha de espaçamento - type element = pula_linha
-            if any(element[1] == 'pula_linha' for element in row_elements):
+            # Processa elementos ocultos primeiro
+            for element in row_elements:
+                if element[1].endswith('H'):
+                    name = element[0]
+                    type_elem = element[1]
+                    math_elem = element[2]
+                    
+                    if type_elem == 'formulaH':
+                        result = calculate_formula(math_elem, st.session_state.form_values, cursor)
+                        cursor.execute("""
+                            UPDATE forms_tab 
+                            SET value_element = ? 
+                            WHERE name_element = ? AND user_id = ?
+                        """, (result, name, st.session_state.user_id))
+                        conn.commit()
+                    elif type_elem == 'condicaoH':
+                        result = process_conditional_element(cursor, element)
+                        cursor.execute("""
+                            UPDATE forms_tab 
+                            SET value_element = ? 
+                            WHERE name_element = ? AND user_id = ?
+                        """, (result, name, st.session_state.user_id))
+                        conn.commit()
+                    elif type_elem == 'call_insumosH':
+                        result = call_insumos(cursor, element)
+                        cursor.execute("""
+                            UPDATE forms_tab 
+                            SET value_element = ? 
+                            WHERE name_element = ? AND user_id = ?
+                        """, (result, name, st.session_state.user_id))
+                        conn.commit()
+            
+            # Verifica se há elementos visíveis na linha para criar o layout
+            visible_elements = [e for e in row_elements if not e[1].endswith('H')]
+            if not visible_elements:
+                continue
+                
+            # Verifica se é uma linha de espaçamento
+            if any(element[1] == 'pula_linha' for element in visible_elements):
                 st.markdown("<br>", unsafe_allow_html=True)
                 continue
             
-            # Layout com colunas
+            # Layout com colunas apenas para elementos visíveis
             cols = st.columns(MAX_COLUMNS)
             
-            for element in row_elements:
+            for element in visible_elements:
                 name = element[0]
                 type_elem = element[1]
                 math_elem = element[2]
@@ -462,6 +506,15 @@ def process_forms_tab(section='cafe'):
                                     
                                     # Compara valores como float
                                     if abs(numeric_value - float(value or 0)) > 1e-10:
+                                        # Registra log apenas uma vez por seção
+                                        if not st.session_state[log_key]:
+                                            registrar_acesso(
+                                                st.session_state.user_id,
+                                                f"forms_{section}",
+                                                f"Alteração em formulário de {section}"
+                                            )
+                                            st.session_state[log_key] = True
+                                            
                                         cursor.execute("""
                                             UPDATE forms_tab 
                                             SET value_element = ? 
@@ -675,46 +728,6 @@ def process_forms_tab(section='cafe'):
     finally:
         if conn:
             conn.close()
-
-    # Inicializar form_data se não existir
-    if "form_data" not in st.session_state:
-        st.session_state["form_data"] = {}
-    
-    if section == "cafe":
-        # Carregar último valor salvo (opcional)
-        conn = sqlite3.connect("calcpc.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT tipo_cafe, quantidade 
-            FROM form_cafe 
-            WHERE user_id = ? 
-            ORDER BY data_input DESC 
-            LIMIT 1
-        """, (st.session_state["user_id"],))
-        ultimo_valor = cursor.fetchone()
-        conn.close()
-        
-        # Usar último valor como padrão se existir
-        tipo_cafe_default = ultimo_valor[0] if ultimo_valor else None
-        quantidade_default = ultimo_valor[1] if ultimo_valor else 0.0
-        
-        # Criar os inputs e salvar no session_state
-        tipo_cafe = st.selectbox(
-            "Tipo de Café",
-            ["Arábica", "Robusta"],
-            index=["Arábica", "Robusta"].index(tipo_cafe_default) if tipo_cafe_default else 0
-        )
-        quantidade = st.number_input(
-            "Quantidade (kg)",
-            min_value=0.0,
-            value=quantidade_default
-        )
-        
-        # Atualizar form_data no session_state
-        st.session_state["form_data"].update({
-            "tipo_cafe": tipo_cafe,
-            "quantidade": quantidade
-        })
 
 def call_insumos(cursor, element):
     """

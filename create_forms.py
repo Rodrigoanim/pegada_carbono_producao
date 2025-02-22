@@ -1,8 +1,8 @@
 # Arquivo: create_forms.py
-# Data: 16/02/2025 - 17:41
+# Data: 18/02/2025 - 15:12
 # Descrição: Script para atualizar atraves de um arquivo .txt
-# Cursor - Claude 3.5 Sonnet
 # Tabelas: forms_tab, forms_insumos, forms_resultados, forms_result_sea, forms_setorial, forms_setorial_sea, forms_energetica
+# Adaptação para o uso de Discos SSD e a pasta Data para o banco de dados
 # Programa roda direto no Python - não usar o streamlit
 
 
@@ -13,8 +13,9 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 import sys
 
-# Nome do banco de dados
-DB_NAME = "calcpc.db"
+
+from pathlib import Path
+from config import DB_PATH, DATA_DIR  # Adicione esta importação
 
 def clean_string(value):
     """Limpa strings de aspas e apóstrofos extras."""
@@ -348,19 +349,46 @@ def select_import_file(table_name):
         return txt_file
     return None
 
+def check_database():
+    """Verifica se a pasta data e o banco de dados existem."""
+    root = tk.Tk()
+    root.withdraw()
+    
+    # Verifica se o diretório data existe
+    if not DATA_DIR.exists():
+        messagebox.showerror(
+            "Erro",
+            "Pasta 'data' não encontrada. O programa não pode continuar.\n"
+            "Por favor, crie a pasta 'data' e coloque o arquivo calcpc.db nela."
+        )
+        sys.exit(1)
+        
+    # Verifica se o banco existe
+    if not DB_PATH.exists():
+        messagebox.showerror(
+            "Erro",
+            "Banco de dados não encontrado.\n"
+            "Por favor, verifique se o arquivo calcpc.db está na pasta data."
+        )
+        sys.exit(1)
+
 def create_database():
     """Cria o banco de dados e a tabela forms_resultados."""
-    table_name = "forms_resultados"
+    check_database()  # Verifica pasta data e banco
     
+    table_name = "forms_resultados"
     conn = None
     try:
+        # Garante que o diretório de dados existe
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -369,11 +397,11 @@ def create_database():
                 print("Operação cancelada pelo usuário.")
                 return
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela
@@ -460,17 +488,21 @@ def create_database():
 
 def create_database_insumos():
     """Cria o banco de dados e a tabela forms_insumos."""
-    table_name = "forms_insumos"
+    check_database()  # Verifica pasta data e banco
     
+    table_name = "forms_insumos"
     conn = None
     try:
+        # Garante que o diretório de dados existe
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -479,11 +511,11 @@ def create_database_insumos():
                 print("Operação cancelada pelo usuário.")
                 return
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela
@@ -570,17 +602,21 @@ def create_database_insumos():
 
 def create_database_forms():
     """Cria o banco de dados e a tabela forms_tab."""
-    table_name = "forms_tab"  # Nome fixo da tabela
+    check_database()
+    table_name = "forms_tab"
     
     conn = None
     try:
+        # Garante que o diretório de dados existe
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -591,7 +627,7 @@ def create_database_forms():
         
         # Criar conexão se ainda não existe
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela
@@ -673,15 +709,16 @@ def create_database_forms():
 
 def create_database_usuarios():
     """Cria o banco de dados e a tabela usuarios."""
+    check_database()
     table_name = "usuarios"
     conn = None
     try:
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -690,11 +727,11 @@ def create_database_usuarios():
                 print("Operação cancelada pelo usuário.")
                 return
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela usuarios com estrutura atualizada incluindo user_id
@@ -766,17 +803,18 @@ def create_database_usuarios():
 
 def create_database_result_sea():
     """Importa dados para a tabela forms_result_sea."""
+    check_database()
     table_name = "forms_result_sea"
     
     conn = None
     try:
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja limpar os dados existentes?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DELETE FROM {table_name}")
                 conn.commit()
@@ -785,7 +823,7 @@ def create_database_result_sea():
                 print("Importação será realizada mantendo dados existentes.")
         
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Usa a nova função de seleção de arquivo
@@ -854,17 +892,18 @@ def create_database_result_sea():
 
 def create_database_setorial():
     """Cria o banco de dados e a tabela forms_setorial."""
+    check_database()
     table_name = "forms_setorial"
     
     conn = None
     try:
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -873,11 +912,11 @@ def create_database_setorial():
                 print("Operação cancelada pelo usuário.")
                 return
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela
@@ -964,6 +1003,7 @@ def create_database_setorial():
 
 def create_database_setorial_sea():
     """Cria o banco de dados e a tabela forms_setorial_sea."""
+    check_database()
     table_name = "forms_setorial_sea"
     
     print(f"\nIniciando importação para tabela: {table_name}")  # Debug
@@ -971,12 +1011,12 @@ def create_database_setorial_sea():
     conn = None
     try:
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -985,11 +1025,11 @@ def create_database_setorial_sea():
                 print("Operação cancelada pelo usuário.")
                 return
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela
@@ -1085,6 +1125,7 @@ def create_database_setorial_sea():
 
 def create_database_energetica():
     """Cria o banco de dados e a tabela forms_energetica."""
+    check_database()
     table_name = "forms_energetica"
     
     print(f"\nIniciando importação para tabela: {table_name}")  # Debug
@@ -1092,12 +1133,12 @@ def create_database_energetica():
     conn = None
     try:
         # Verifica banco existente
-        if os.path.exists(DB_NAME):
+        if DB_PATH.exists():
             root = tk.Tk()
             root.withdraw()
             if messagebox.askyesno("Confirmação", 
                 f"A tabela {table_name} já existe. Deseja apagá-la e criar uma nova?"):
-                conn = sqlite3.connect(DB_NAME)
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
@@ -1106,11 +1147,11 @@ def create_database_energetica():
                 print("Operação cancelada pelo usuário.")
                 return
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         if not conn:
-            conn = sqlite3.connect(DB_NAME)
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
         # Cria tabela
@@ -1205,81 +1246,41 @@ def create_database_energetica():
             conn.close()
 
 if __name__ == "__main__":
-    # Menu principal com todas as opções
-    root = tk.Tk()
-    root.title("Seleção de Operação")
-    root.geometry("400x550")
+    # Verifica pasta data e banco antes de mostrar o menu
+    check_database()
     
-    tk.Label(root, text="Selecione a operação desejada:", pady=20).pack()
-    
-    # Funções para executar cada operação
-    def run_create_database_forms():
-        root.destroy()
-        create_database_forms()
-        sys.exit(0)
-    
-    def run_create_database_insumos():
-        root.destroy()
-        create_database_insumos()
-        sys.exit(0)
-    
-    def run_create_database_resultados():
-        root.destroy()
-        create_database()
-        sys.exit(0)
-    
-    def run_create_database_usuarios():
-        root.destroy()
-        create_database_usuarios()
-        sys.exit(0)
-    
-    def run_create_database_result_sea():
-        root.destroy()
-        create_database_result_sea()
-        sys.exit(0)
-    
-    def run_create_database_setorial():
-        root.destroy()
-        create_database_setorial()
-        sys.exit(0)
-    
-    def run_create_database_setorial_sea():
-        root.destroy()
-        create_database_setorial_sea()
-        sys.exit(0)
-    
-    def run_create_database_energetica():
-        root.destroy()
-        create_database_energetica()
-        sys.exit(0)
-    
-    def on_closing():
-        root.quit()
-        root.destroy()
-        sys.exit(0)
-    
-    # Botões em ordem alfabética
-    tk.Button(root, text="Importar Forms Energética", command=run_create_database_energetica, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Forms Insumos", command=run_create_database_insumos, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Forms Principal", command=run_create_database_forms, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Forms Result SEA", command=run_create_database_result_sea, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Forms Resultados", command=run_create_database_resultados, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Forms Setorial", command=run_create_database_setorial, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Forms Setorial SEA", command=run_create_database_setorial_sea, pady=10).pack(pady=5)
-    tk.Button(root, text="Importar Usuários", command=run_create_database_usuarios, pady=10).pack(pady=5)
-    
-    # Botão Sair
-    tk.Button(root, text="Sair", command=on_closing, pady=10).pack(pady=20)
-    
-    # Configura o protocolo de fechamento da janela
-    root.protocol("WM_DELETE_WINDOW", on_closing)
-    
-    # Centraliza a janela na tela
-    root.update_idletasks()
-    width = root.winfo_width()
-    height = root.winfo_height()
-    x = (root.winfo_screenwidth() // 2) - (width // 2)
-    y = (root.winfo_screenheight() // 2) - (height // 2)
-    root.geometry('{}x{}+{}+{}'.format(width, height, x, y))
-    
-    root.mainloop()
+    while True:
+        print("\nMENU DE OPÇÕES:")
+        print("1 - Criar Tabela forms_resultados")
+        print("2 - Criar Tabela forms_insumos")
+        print("3 - Criar Tabela forms_tab")
+        print("4 - Criar Tabela usuarios")
+        print("5 - Criar Tabela forms_result_sea")
+        print("6 - Criar Tabela forms_setorial")
+        print("7 - Criar Tabela forms_setorial_sea")
+        print("8 - Criar Tabela forms_energetica")
+        print("0 - Sair")
+        
+        opcao = input("\nEscolha uma opção: ")
+        
+        if opcao == "1":
+            create_database()
+        elif opcao == "2":
+            create_database_insumos()
+        elif opcao == "3":
+            create_database_forms()
+        elif opcao == "4":
+            create_database_usuarios()
+        elif opcao == "5":
+            create_database_result_sea()
+        elif opcao == "6":
+            create_database_setorial()
+        elif opcao == "7":
+            create_database_setorial_sea()
+        elif opcao == "8":
+            create_database_energetica()
+        elif opcao == "0":
+            print("Programa encerrado.")
+            break
+        else:
+            print("Opção inválida!")

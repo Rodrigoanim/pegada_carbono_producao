@@ -1,19 +1,42 @@
 # Arquivo: resultados.py
-# Data: 14/02/2025 08:00
+# Data: 19/02/2025 09:25
 # Pagina de resultados - Dashboard
+# Adaptação para o uso de Discos SSD e a pasta Data para o banco de dados
+
+# type: ignore
+# pylance: disable=reportMissingModuleSource
+
+try:
+    import reportlab
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+        Image,
+        KeepTogether
+    )
+except ImportError as e:
+    print(f"Erro ao importar ReportLab: {e}")
 
 import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
-from fpdf import FPDF
 from datetime import date
 import io
 import tempfile
 import matplotlib.pyplot as plt
+import traceback
+from paginas.monitor import registrar_acesso
+from paginas.form_model_recalc import verificar_dados_usuario, calculate_formula, atualizar_formulas
+import time
 
-# Nome do banco de dados
-DB_NAME = "calcpc.db"
+from config import DB_PATH  # Adicione esta importação
 
 def format_br_number(value):
     """
@@ -394,196 +417,304 @@ def tabela_dados(cursor, element):
     except Exception as e:
         st.error(f"Erro ao criar tabela: {str(e)}")
 
-def subtitulo():
-    """
-    Exibe um subtítulo centralizado com estilo personalizado
-    """
-    st.markdown("""
-        <h2 style='
-            text-align: Left;
-            font-size: 36px;
-            color: #000000;
-            margin-top: 10px;
-            margin-bottom: 30px;
-            font-family: sans-serif;
-            font-weight: 500;
-        '>Resultado das Simulações da Empresa</h2>
-    """, unsafe_allow_html=True)
-
-def generate_pdf_report(cursor, user_id):
-    """
-    Gera um relatório PDF com layout de duas colunas, mantendo a estética da interface web
-    """
+def gerar_dados_tabela(cursor, elemento):
+    """Função auxiliar para gerar dados da tabela"""
     try:
-        # Buscar informações do usuário
-        cursor.execute("""
-            SELECT nome, empresa FROM usuarios WHERE id = ?
-        """, (user_id,))
-        user_data = cursor.fetchone()
-        user_name = user_data[0] if user_data else "Usuário"
-        company_name = user_data[1] if user_data else "Empresa"
-
-        # Inicializar PDF em modo paisagem
-        pdf = FPDF(orientation='L')
-        pdf.add_page()
+        msg = elemento[3]         # msg_element
+        select = elemento[5]      # select_element
+        rotulos = elemento[6]     # str_element
+        user_id = elemento[10]    # user_id
         
-        # Usar fonte sans-serif
-        pdf.set_font("Arial", 'B', 24)  # Arial é uma fonte sans-serif
-        
-        # Cabeçalho estilizado
-        pdf.set_fill_color(232, 245, 233)  # Cor similar ao #e8f5e9
-        pdf.cell(280, 15, "Simulador da Pegada de Carbono do Café Torrado", ln=True, align="C", fill=True)
-        pdf.set_font("Arial", 'B', 20)
-        pdf.cell(280, 12, "Resultados das Simulações da Empresa", ln=True, align="C", fill=True)
-        
-        # Informações do usuário com estilo
-        pdf.set_font("Arial", size=14)
-        pdf.ln(5)
-        pdf.cell(280, 8, f"Usuário: {user_name}", ln=True, align="L")
-        pdf.cell(280, 8, f"Empresa: {company_name}", ln=True, align="L")
-        pdf.cell(280, 8, f"Data: {date.today().strftime('%d/%m/%Y')}", ln=True, align="L")
-        pdf.ln(10)
-
-        # Buscar elementos ordenados por e_row
-        cursor.execute("""
-            SELECT name_element, type_element, msg_element, value_element, 
-                   select_element, str_element, e_col, e_row, section
-            FROM forms_resultados
-            WHERE type_element IN ('tabela', 'grafico')
-            AND user_id = ?
-            ORDER BY e_row, e_col
-        """, (user_id,))
-        
-        elements = cursor.fetchall()
-        
-        # Agrupar elementos por e_row
-        row_elements = {}
-        for element in elements:
-            e_row = element[7]
-            if e_row not in row_elements:
-                row_elements[e_row] = []
-            row_elements[e_row].append(element)
-
-        # Processar elementos agrupados
-        for e_row, elements_group in row_elements.items():
-            pdf.add_page()
+        if not select or not rotulos:
+            st.error("Configuração incompleta da tabela: select ou rótulos vazios")
+            return None
             
-            # Encontrar tabela e gráfico no grupo
-            tabela = next((e for e in elements_group if e[1] == 'tabela'), None)
-            grafico = next((e for e in elements_group if e[1] == 'grafico'), None)
-            
-            if tabela and grafico:
-                # Título da seção usando msg_element da tabela
-                pdf.set_font("Arial", 'B', 18)
-                pdf.cell(280, 10, tabela[2], ln=True, align="C")  # msg_element da tabela
-                pdf.ln(5)
-                
-                # Posições iniciais separadas para tabela e gráfico
-                y_start_graph = pdf.get_y()  # Posição original para o gráfico
-                y_start_table = y_start_graph + 15  # Posição ajustada só para a tabela
-                
-                # Definir larguras da tabela (reduzidas em 30%)
-                desc_width = 49  # 70 * 0.7
-                value_width = 42  # 60 * 0.7
-                total_width = desc_width + value_width
-                
-                # Calcular posição x para centralizar a tabela reduzida
-                x_start = 10 + (130 - total_width) / 2
-                
-                # Processar tabela (coluna esquerda)
-                pdf.set_xy(x_start, y_start_table)
-                pdf.set_font("Arial", 'B', 12)
-                
-                # Estilo do cabeçalho da tabela (com borda = 1)
-                pdf.set_fill_color(232, 245, 233)  # #e8f5e9
-                pdf.cell(desc_width, 10, "Descrição", 1, 0, 'L', True)
-                pdf.cell(value_width, 10, "Valor", 1, 1, 'R', True)
-                
-                # Dados da tabela (com borda = 1)
-                pdf.set_font("Arial", '', 12)
-                select_values = tabela[4].split('|')
-                labels = tabela[5].split('|')
-                
-                for type_name, label in zip(select_values, labels):
-                    cursor.execute("""
-                        SELECT value_element 
-                        FROM forms_resultados 
-                        WHERE name_element = ? AND user_id = ?
-                        ORDER BY ID_element DESC LIMIT 1
-                    """, (type_name.strip(), user_id))
-                    
-                    result = cursor.fetchone()
-                    value = format_br_number(result[0]) if result and result[0] is not None else '0,00'
-                    
-                    pdf.set_x(x_start)  # Manter alinhamento
-                    pdf.cell(desc_width, 8, label, 1, 0, 'L')  # Com borda = 1
-                    pdf.cell(value_width, 8, value, 1, 1, 'R')  # Com borda = 1
-                
-                # Processar gráfico (coluna direita)
-                select_values = grafico[4].split('|')
-                labels = grafico[5].split('|')
-                valores = []
-                cores = grafico[8].split('|') if grafico[8] else ['#1f77b4'] * len(labels)
-                
-                for type_name in select_values:
-                    cursor.execute("""
-                        SELECT value_element 
-                        FROM forms_resultados 
-                        WHERE name_element = ? AND user_id = ?
-                        ORDER BY ID_element DESC LIMIT 1
-                    """, (type_name.strip(), user_id))
-                    
-                    result = cursor.fetchone()
-                    valor = float(result[0]) if result and result[0] is not None else 0.0
-                    valores.append(valor)
-                
-                # Configurar gráfico com linhas de grade
-                plt.figure(figsize=(8, 6))
-                
-                # Configurações de fonte e estilo
-                plt.rcParams['font.family'] = 'sans-serif'
-                plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Helvetica', 'sans-serif']
-                plt.rcParams['font.size'] = 18
-                plt.rcParams['axes.grid'] = True  # Habilita a grade
-                plt.rcParams['grid.alpha'] = 0.3  # Transparência da grade
-                plt.rcParams['axes.axisbelow'] = True  # Grade atrás das barras
-                
-                # Criar gráfico de barras
-                bars = plt.bar(labels, valores, color=cores)
-                
-                # Configurar título e eixos sem notação científica
-                plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format_br_number(x)))
-                plt.gca().get_yaxis().get_offset_text().set_visible(False)  # Remove notação científica
-                
-                plt.title("")  # Remove o título do gráfico
-                plt.xlabel("Etapas", fontsize=18, family='sans-serif')
-                plt.ylabel("Valores", fontsize=18, family='sans-serif')
-                plt.xticks(rotation=45, ha='right', family='sans-serif')
-                plt.grid(True, alpha=0.3, linestyle='-', color='gray')  # Grade com linhas sólidas
-                
-                # Ajustar margens
-                plt.tight_layout()
-                
-                # Salvar gráfico temporariamente
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
-                    plt.savefig(temp_file.name, dpi=300, bbox_inches='tight',
-                              facecolor='white', edgecolor='none')
-                    plt.close()
-                    
-                    # Posicionar gráfico na coluna direita usando posição original
-                    pdf.image(temp_file.name, x=150, y=y_start_graph, w=130)
+        # Separa os type_names e rótulos
+        type_names = str(select).split('|')
+        labels = str(rotulos).split('|')
+        valores = []
         
-        # Retornar PDF como bytes
-        return pdf.output(dest='S').encode('latin-1')
+        # Busca os valores para cada type_name
+        for type_name in type_names:
+            cursor.execute("""
+                SELECT value_element 
+                FROM forms_resultados 
+                WHERE name_element = ? 
+                AND user_id = ?
+                ORDER BY ID_element DESC
+                LIMIT 1
+            """, (type_name.strip(), user_id))
+            
+            result = cursor.fetchone()
+            valor = format_br_number(result[0]) if result and result[0] is not None else '0,00'
+            valores.append(valor)
+        
+        # Retornar dados formatados para a tabela
+        return {
+            'title': msg if msg else "Tabela de Dados",
+            'data': [['Descrição', 'Valor']] + list(zip(labels, valores))
+        }
         
     except Exception as e:
-        st.error(f"Erro ao gerar PDF: {str(e)}")
+        st.error(f"Erro ao gerar dados da tabela: {str(e)}")
         return None
+
+def gerar_dados_grafico(cursor, elemento):
+    """Função auxiliar para gerar gráfico como imagem para o PDF"""
+    try:
+        msg = elemento[3]         # msg_element
+        select = elemento[5]      # select_element
+        rotulos = elemento[6]     # str_element
+        user_id = elemento[10]    # user_id
+        cor = elemento[9]         # section (cor do gráfico)
+        
+        if not select or not rotulos:
+            st.error("Configuração incompleta do gráfico: select ou rótulos vazios")
+            return None
+            
+        type_names = str(select).split('|')
+        labels = str(rotulos).split('|')
+        valores = []
+        cores = [cor] * len(type_names)  # Usar a mesma cor para todas as barras
+        
+        for type_name in type_names:
+            cursor.execute("""
+                SELECT value_element 
+                FROM forms_resultados 
+                WHERE name_element = ? 
+                AND user_id = ?
+                ORDER BY ID_element DESC
+                LIMIT 1
+            """, (type_name.strip(), user_id))
+            
+            result = cursor.fetchone()
+            valor = float(result[0]) if result and result[0] is not None else 0.0
+            valores.append(valor)
+        
+        # Criar gráfico usando plotly
+        fig = px.bar(
+            x=labels,
+            y=valores,
+            text=[format_br_number(v) for v in valores],
+            title=None,
+            color_discrete_sequence=cores
+        )
+        
+        # Configurar layout
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            width=800,
+            margin=dict(t=30, b=50),
+            xaxis=dict(title=None),
+            yaxis=dict(title=None)
+        )
+        
+        # Configurar texto nas barras
+        fig.update_traces(textposition='auto')
+        
+        # Converter para imagem
+        img_bytes = fig.to_image(format="png")
+        
+        return {
+            'title': msg,
+            'image': Image(io.BytesIO(img_bytes), width=400, height=300)
+        }
+        
+    except Exception as e:
+        st.error(f"Erro ao gerar gráfico: {str(e)}")
+        st.write("Debug: Stack trace completo:", traceback.format_exc())
+        return None
+
+def subtitulo():
+    try:
+        col1, col2 = st.columns([8, 2])
+        with col1:
+            st.markdown("""
+                <h2 style='
+                    text-align: Left;
+                    font-size: 36px;
+                    color: #000000;
+                    margin-top: 10px;
+                    margin-bottom: 30px;
+                    font-family: sans-serif;
+                    font-weight: 500;
+                '>Resultado das Simulações da Empresa</h2>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            if st.button("Gerar PDF", type="primary"):
+                try:
+                    # Criar um placeholder para as mensagens
+                    msg_placeholder = st.empty()
+                    msg_placeholder.info("Gerando PDF... Por favor, aguarde.")
+                    
+                    # 2. Registra geração do PDF
+                    registrar_acesso(
+                        st.session_state.user_id,
+                        "resultados",
+                        "Geração PDF na simulação Resultados"
+                    )
+                    
+                    # Configuração inicial do PDF com orientação paisagem
+                    buffer = io.BytesIO()
+                    doc = SimpleDocTemplate(
+                        buffer,
+                        pagesize=landscape(A4),
+                        rightMargin=36,
+                        leftMargin=36,
+                        topMargin=36,
+                        bottomMargin=36
+                    )
+                    
+                    elements = []
+                    styles = getSampleStyleSheet()
+                    title_style = ParagraphStyle(
+                        'CustomTitle',
+                        parent=styles['Heading1'],
+                        fontSize=24,
+                        spaceAfter=30,
+                        alignment=1  # 1 = centralizado
+                    )
+                    
+                    subtitle_style = ParagraphStyle(
+                        'CustomSubtitle',
+                        parent=styles['Heading2'],
+                        fontSize=18,
+                        spaceAfter=20,
+                        alignment=1  # 1 = centralizado
+                    )
+                    
+                    # Título principal centralizado
+                    elements.append(Paragraph("Resultado das Simulações da Empresa", title_style))
+                    elements.append(Spacer(1, 20))
+                    
+                    # Usar a mesma lógica da tela
+                    conn = sqlite3.connect(DB_PATH)
+                    cursor = conn.cursor()
+                    
+                    # Buscar elementos ordenados por row e col (mesma query da tela)
+                    cursor.execute("""
+                        SELECT name_element, type_element, math_element, msg_element,
+                               value_element, select_element, str_element, e_col, e_row,
+                               section, user_id
+                        FROM forms_resultados
+                        WHERE (type_element = 'titulo' OR type_element = 'pula linha' 
+                              OR type_element = 'call_dados' OR type_element = 'grafico'
+                              OR type_element = 'tabela')
+                        AND user_id = ?
+                        ORDER BY e_row, e_col
+                    """, (st.session_state.user_id,))
+                    
+                    elements_data = cursor.fetchall()
+                    
+                    # Agrupar elementos por e_row (mesma lógica da tela)
+                    row_elements = {}
+                    for element in elements_data:
+                        e_row = element[8]
+                        if e_row not in row_elements:
+                            row_elements[e_row] = []
+                        row_elements[e_row].append(element)
+                    
+                    # Processar elementos por linha
+                    for e_row in sorted(row_elements.keys()):
+                        row_data = row_elements[e_row]
+                        
+                        # Separar elementos da linha por coluna
+                        col1_elements = [e for e in row_data if e[7] <= 3]  # e_col <= 3
+                        col2_elements = [e for e in row_data if e[7] > 3]   # e_col > 3
+                        
+                        # Para cada par de elementos (tabela e gráfico)
+                        tabela = next((e for e in col1_elements if e[1] == 'tabela'), None)
+                        grafico = next((e for e in col2_elements if e[1] == 'grafico'), None)
+                        
+                        if tabela and grafico:
+                            dados_tabela = gerar_dados_tabela(cursor, tabela)
+                            dados_grafico = gerar_dados_grafico(cursor, grafico)
+                            
+                            if dados_tabela and dados_grafico:
+                                # Criar grupo de elementos que devem ficar juntos
+                                section_elements = []
+                                
+                                # Título da seção (usando msg_element da tabela)
+                                section_elements.append(Paragraph(tabela[3], subtitle_style))  # tabela[3] é o msg_element
+                                section_elements.append(Spacer(1, 10))
+                                
+                                # Criar tabela de dados
+                                t_dados = Table(
+                                    dados_tabela['data'],
+                                    colWidths=[200, 100]
+                                )
+                                t_dados.setStyle(TableStyle([
+                                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightgreen),
+                                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                                    ('FONTSIZE', (0, 1), (-1, -1), 10),
+                                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                                ]))
+                                
+                                # Ajustar tamanho do gráfico
+                                dados_grafico['image']._width = 400
+                                dados_grafico['image']._height = 300
+                                
+                                # Layout em duas colunas
+                                layout_data = [[t_dados, dados_grafico['image']]]
+                                layout = Table(
+                                    layout_data,
+                                    colWidths=[300, 450],
+                                    style=[
+                                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                                        ('LEFTPADDING', (0, 0), (-1, -1), 15),
+                                        ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+                                    ]
+                                )
+                                
+                                section_elements.append(layout)
+                                section_elements.append(Spacer(1, 30))
+                                
+                                # Adicionar todos os elementos da seção juntos
+                                elements.append(KeepTogether(section_elements))
+                    
+                    conn.close()
+                    
+                    # Gerar PDF
+                    doc.build(elements)
+                    
+                    # Preparar download
+                    pdf_data = buffer.getvalue()
+                    buffer.close()
+                    
+                    # Ao finalizar, limpar a mensagem de "Gerando..." e mostrar o botão de download
+                    msg_placeholder.empty()  # Limpa a mensagem anterior
+                    with msg_placeholder.container():
+                        st.download_button(
+                            label="Baixar PDF",
+                            data=pdf_data,
+                            file_name="resultados.pdf",
+                            mime="application/pdf"
+                        )
+                        st.success("PDF gerado com sucesso!")
+                    
+                except Exception as e:
+                    msg_placeholder.error(f"Erro ao gerar PDF: {str(e)}")
+                    st.write("Debug: Stack trace completo:", traceback.format_exc())
+                    
+    except Exception as e:
+        st.error(f"Erro ao gerar interface: {str(e)}")
 
 def show_results():
     """
     Função principal para exibir a página de resultados
     """
+    conn = None
     try:
         if 'user_id' not in st.session_state:
             st.error("Usuário não está logado!")
@@ -591,36 +722,64 @@ def show_results():
             
         user_id = st.session_state.user_id
         
+        # Estabelece conexão com retry
+        for _ in range(3):
+            try:
+                conn = sqlite3.connect(DB_PATH, timeout=20)
+                cursor = conn.cursor()
+                break
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e):
+                    time.sleep(1)
+                    continue
+                raise e
+        else:
+            st.error("Não foi possível conectar ao banco de dados. Tente novamente.")
+            return
+
+        # 1. Verifica se usuário tem dados em forms_tab
+        verificar_dados_usuario(cursor, user_id)
+        
+        # 2. Atualiza todas as fórmulas e verifica o resultado
+        if not atualizar_formulas(cursor, user_id):
+            st.error("Erro ao atualizar fórmulas!")
+            return
+
+        # 3. Verifica/inicializa dados em forms_resultados
+        new_user(cursor, user_id)
+        conn.commit()
+        
+        # 4. Registra acesso à página
+        registrar_acesso(
+            user_id,
+            "resultados",
+            "Acesso na simulação Resultados"
+        )
+
         # Adiciona o subtítulo antes do conteúdo principal
         subtitulo()
         
-        # Adicionar botão para gerar PDF
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("Gerar Relatório PDF", use_container_width=True):
-                status = st.empty()
-                status.info("Gerando PDF...")
-                
-                conn = sqlite3.connect(DB_NAME)
-                cursor = conn.cursor()
-                
-                pdf_content = generate_pdf_report(cursor, user_id)
-                conn.close()
-                
-                if pdf_content:
-                    status.empty()
-                    st.download_button(
-                        label="Baixar Relatório PDF",
-                        data=pdf_content,
-                        file_name=f"relatorio_resultados_{date.today().strftime('%Y%m%d')}.pdf",
-                        mime="application/pdf"
-                    )
-        
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        
-        # Garante que existam dados para o usuário
-        new_user(cursor, user_id)
+        # Configuração para esconder elementos durante a impressão e controlar quebra de página
+        hide_streamlit_style = """
+            <style>
+                @media print {
+                    [data-testid="stSidebar"] {
+                        display: none !important;
+                    }
+                    .stApp {
+                        margin: 0;
+                        padding: 0;
+                    }
+                    #MainMenu {
+                        display: none !important;
+                    }
+                    .page-break {
+                        page-break-before: always !important;
+                    }
+                }
+            </style>
+        """
+        st.markdown(hide_streamlit_style, unsafe_allow_html=True)
         
         # Buscar todos os elementos ordenados por row e col
         cursor.execute("""
@@ -636,6 +795,9 @@ def show_results():
         """, (user_id,))
         
         elements = cursor.fetchall()
+        
+        # Contador para gráficos
+        grafico_count = 0
         
         # Agrupar elementos por e_row
         row_elements = {}
@@ -658,35 +820,45 @@ def show_results():
                     # Elementos da coluna 1 (e_col <= 3)
                     if e_col <= 3:
                         with col1:
-                            if element[1] == 'titulo':
-                                titulo(cursor, element)
-                            elif element[1] == 'pula linha':
-                                pula_linha(cursor, element)
-                            elif element[1] == 'call_dados':
-                                call_dados(cursor, element)
-                            elif element[1] == 'grafico':
+                            if element[1] == 'grafico':
+                                grafico_count += 1
                                 grafico_barra(cursor, element)
-                            elif element[1] == 'tabela':
-                                tabela_dados(cursor, element)
+                                if grafico_count == 2:
+                                    st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
+                            else:
+                                if element[1] == 'titulo':
+                                    titulo(cursor, element)
+                                elif element[1] == 'pula linha':
+                                    pula_linha(cursor, element)
+                                elif element[1] == 'call_dados':
+                                    call_dados(cursor, element)
+                                elif element[1] == 'tabela':
+                                    tabela_dados(cursor, element)
                     
                     # Elementos da coluna 2 (e_col > 3)
                     else:
                         with col2:
-                            if element[1] == 'titulo':
-                                titulo(cursor, element)
-                            elif element[1] == 'pula linha':
-                                pula_linha(cursor, element)
-                            elif element[1] == 'call_dados':
-                                call_dados(cursor, element)
-                            elif element[1] == 'grafico':
+                            if element[1] == 'grafico':
+                                grafico_count += 1
                                 grafico_barra(cursor, element)
-                            elif element[1] == 'tabela':
-                                tabela_dados(cursor, element)
-        
-        conn.close()
+                                if grafico_count == 2:
+                                    st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
+                            else:
+                                if element[1] == 'titulo':
+                                    titulo(cursor, element)
+                                elif element[1] == 'pula linha':
+                                    pula_linha(cursor, element)
+                                elif element[1] == 'call_dados':
+                                    call_dados(cursor, element)
+                                elif element[1] == 'tabela':
+                                    tabela_dados(cursor, element)
         
     except Exception as e:
+        print(f"ERRO em show_results: {str(e)}")
         st.error(f"Erro ao carregar resultados: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     show_results()
